@@ -1,28 +1,61 @@
-/*eslint-env node*/
+/**
+ * Copyright 2015 IBM Corp. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-//------------------------------------------------------------------------------
-// node.js starter application for Bluemix
-//------------------------------------------------------------------------------
+const express = require('express');
+const app = express();
 
-// This application uses express as its web server
-// for more info, see: http://expressjs.com
-var express = require('express');
+const queryBuilder = require('./query-builder');
 
-// cfenv provides access to your Cloud Foundry environment
-// for more info, see: https://www.npmjs.com/package/cfenv
-var cfenv = require('cfenv');
-
-// create a new express server
-var app = express();
-
-// serve the files out of ./public as our main files
-app.use(express.static(__dirname + '/public'));
-
-// get the app environment from Cloud Foundry
-var appEnv = cfenv.getAppEnv();
-
-// start server on the specified port and binding host
-app.listen(appEnv.port, '0.0.0.0', function() {
-  // print a message when the server starts listening
-  console.log("server starting on " + appEnv.url);
+const DiscoveryV1 = require('watson-developer-cloud/discovery/v1');
+const discovery = new DiscoveryV1({
+  // If unspecified here, the DISCOVERY_USERNAME and
+  // DISCOVERY_PASSWORD env properties will be checked
+  // After that, the SDK will fall back to the bluemix-provided VCAP_SERVICES environment property
+  // username: '<username>',
+  // password: '<password>',
+  version_date: '2016-11-09',
+  path: {
+    environment_id: process.env.ENVIRONMENT_ID || '<environment-id>',
+    collection_id: process.env.COLLECTION_ID || '<collection-id>',
+  },
+  qs: { aggregation: `[${queryBuilder.aggregations.join(',')}]` },
 });
+
+
+// Bootstrap application settings
+require('./config/express')(app);
+
+app.get('/', (req, res) => {
+  res.render('index', {
+    BLUEMIX_ANALYTICS: process.env.BLUEMIX_ANALYTICS,
+  });
+});
+
+app.post('/api/query', (req, res, next) => {
+  const params = queryBuilder.build(req.body);
+  discovery.query(params, (error, response) => {
+    if (error) {
+      next(error);
+    } else {
+      res.json(response);
+    }
+  });
+});
+
+// error-handler settings
+require('./config/error-handler')(app);
+
+module.exports = app;
